@@ -348,3 +348,10 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
+# Rider
+.idea/
+*.sln.iml
+
+# Local machine Valheim path (keep Environment.props as the placeholder)
+Environment.props.user
