@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -22,43 +23,59 @@ namespace ValheimPictureFrame.Utils
         public Texture Load(string name)
         {
             if (string.IsNullOrWhiteSpace(name))
-            {
                 return null;
-            }
 
             string textureName = Path.ChangeExtension(name, Path.GetExtension(name).ToLower());
 
             if (cache.ContainsKey(textureName))
-            {
                 return cache[textureName];
-            }
-
 
             if (!(textureName.EndsWith(".jpg") || textureName.EndsWith(".png")))
-            {
                 return null;
-            }
 
             string path = Path.Combine(ImageBasePath, textureName);
-
             if (!File.Exists(path))
-            {
                 return null;
-            }
 
             byte[] fileData = File.ReadAllBytes(path);
-            Texture2D texture = new Texture2D(2, 2);
-            texture.LoadImage(fileData);
-
-            if (texture == null)
-            {
+            var texture = new Texture2D(2, 2);
+            if (!TryLoadImage(texture, fileData))
                 return null;
-            }
 
             texture.name = textureName;
             cache.Add(textureName, texture);
-
             return texture;
+        }
+
+        private static bool TryLoadImage(Texture2D texture, byte[] data)
+        {
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = asm.GetType("UnityEngine.ImageConversion");
+                if (type == null)
+                    continue;
+
+                foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                {
+                    if (method.Name != "LoadImage")
+                        continue;
+
+                    var ps = method.GetParameters();
+                    if (ps.Length < 2 || ps[0].ParameterType != typeof(Texture2D))
+                        continue;
+                    if (ps[1].ParameterType != typeof(byte[]))
+                        continue;
+
+                    if (ps.Length == 2)
+                        method.Invoke(null, new object[] { texture, data });
+                    else
+                        method.Invoke(null, new object[] { texture, data, false });
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public IEnumerator FetchFromWeb(string url, Action<Texture> callback)

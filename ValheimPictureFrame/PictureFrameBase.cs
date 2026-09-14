@@ -27,24 +27,43 @@ namespace ValheimPictureFrame
 
         private static Dictionary<string, string> ParseOptions(string[] args)
         {
-            var options = new Dictionary<string, string>();
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var arg in args)
             {
-                string[] option = arg.Split('=');
+                if (string.IsNullOrWhiteSpace(arg))
+                    continue;
+
+                var option = arg.Split(new[] { '=' }, 2);
                 if (option.Length == 2)
-                {
-                    options.Add(option[0], option[1]);
-                }
+                    options[option[0].Trim()] = option[1].Trim();
+                else
+                    options[arg.Trim()] = "true";
             }
 
             return options;
+        }
+        
+        private static void Shuffle(string[] names)
+        {
+            for (int i = names.Length - 1; i > 0; i--)
+            {
+                int j = UnityEngine.Random.Range(0, i + 1);
+                var tmp = names[i];
+                names[i] = names[j];
+                names[j] = tmp;
+            }
         }
 
         public string GetHoverName()
         {
             return Name;
         }
-
+        
+        public float GetHoverOffset()
+        {
+            return 0f;
+        }
+        
         public string GetHoverText()
         {
             if (!PrivateArea.CheckAccess(base.transform.position, 0f, flash: false))
@@ -52,7 +71,17 @@ namespace ValheimPictureFrame
                 return $"\"{GetText()}\"";
             }
 
-            return $"\"{GetText()}\"\n{Localization.instance.Localize(Name + "\n[<color=yellow><b>$KEY_Use</b></color>] $piece_use")}";
+            string prompt = Name + "\n[<color=yellow><b>$KEY_Use</b></color>] $piece_use";
+            var loc = typeof(Player).Assembly.GetType("Localization");
+            if (loc != null)
+            {
+                var inst = loc.GetProperty("instance")?.GetValue(null);
+                var localize = loc.GetMethod("Localize", new[] { typeof(string) });
+                if (inst != null && localize != null)
+                    prompt = (string)localize.Invoke(inst, new object[] { prompt });
+            }
+
+            return $"\"{GetText()}\"\n{prompt}";
         }
 
         public string GetText()
@@ -164,10 +193,12 @@ namespace ValheimPictureFrame
             }
             StopAnimation();
 
+            var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (text.Length == 2 || text.Length == 3)
             {
-                string[] args = text[text.Length - 1].Split(' ');
-                var options = ParseOptions(args);
+                string[] args = text[text.Length - 1].Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                options = ParseOptions(args);
+
                 Vector3 pivotOffset = new Vector3(0, 0, 0);
 
                 if (options.ContainsKey("pivot") || options.ContainsKey("p"))
@@ -180,7 +211,6 @@ namespace ValheimPictureFrame
                         {
                             case "t":
                             case "top":
-
                                 pivotOffset += new Vector3(0, -PivotOffset.y, 0);
                                 break;
                             case "b":
@@ -195,7 +225,6 @@ namespace ValheimPictureFrame
                             case "left":
                                 pivotOffset += new Vector3(-PivotOffset.x, 0, 0);
                                 break;
-
                         }
                     }
                     pivotOffset += new Vector3(0, 0, 0.023f);
@@ -220,26 +249,23 @@ namespace ValheimPictureFrame
                 if (options.ContainsKey("frame") || options.ContainsKey("f"))
                 {
                     string key = options.ContainsKey("frame") ? "frame" : "f";
-                    string frame = options[key];
-
-                    if(frame == "none")
-                    {
+                    if (options[key] == "none")
                         _frameRenderer.enabled = false;
-                    }
                 }
             }
 
             if (textureCache.IsDirectory(filePath))
             {
-                StartAnimation(textureCache.LoadTextureNames(filePath));
+                var names = textureCache.LoadTextureNames(filePath);
+                if (names != null && names.Length > 1 && options.ContainsKey("shuffle"))
+                    Shuffle(names);
+                StartAnimation(names);
             }
             else
             {
                 SetTexture(filePath);
             }
-
         }
-
 
         private void UpdateText()
         {
