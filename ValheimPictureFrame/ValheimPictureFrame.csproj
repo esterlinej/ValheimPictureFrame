@@ -122,6 +122,14 @@
       <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\netstandard.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="UnityEngine.VideoModule">
+      <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\UnityEngine.VideoModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(VALHEIM_INSTALL)\valheim_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="PictureFrame.cs" />
