@@ -5,6 +5,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using ValheimPictureFrame.Utils;
+using UnityEngine.Video;
 
 namespace ValheimPictureFrame
 {
@@ -53,10 +54,24 @@ namespace ValheimPictureFrame
                 names[j] = tmp;
             }
         }
+        
+        private static bool IsDebugHover()
+        {
+            try
+            {
+                var field = typeof(Terminal).GetField("m_cheat",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                return field != null && field.GetValue(null) is bool on && on;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         public string GetHoverName()
         {
-            return Name;
+            return IsDebugHover() ? Name : "";
         }
         
         public float GetHoverOffset()
@@ -66,10 +81,11 @@ namespace ValheimPictureFrame
         
         public string GetHoverText()
         {
+            if (!IsDebugHover())
+                return "";
+
             if (!PrivateArea.CheckAccess(base.transform.position, 0f, flash: false))
-            {
                 return $"\"{GetText()}\"";
-            }
 
             string prompt = Name + "\n[<color=yellow><b>$KEY_Use</b></color>] $piece_use";
             var loc = typeof(Player).Assembly.GetType("Localization");
@@ -192,6 +208,7 @@ namespace ValheimPictureFrame
                 filePath = $"{text[0]}:{text[1]}";
             }
             StopAnimation();
+            StopVideo();
 
             var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (text.Length == 2 || text.Length == 3)
@@ -246,6 +263,13 @@ namespace ValheimPictureFrame
                     _interval = interval;
                 }
 
+                _volume = 1f;
+                if (options.ContainsKey("volume") || options.ContainsKey("v"))
+                {
+                    string key = options.ContainsKey("volume") ? "volume" : "v";
+                    _volume = Mathf.Clamp01(float.Parse(options[key]));
+                }
+
                 if (options.ContainsKey("frame") || options.ContainsKey("f"))
                 {
                     string key = options.ContainsKey("frame") ? "frame" : "f";
@@ -260,6 +284,10 @@ namespace ValheimPictureFrame
                 if (names != null && names.Length > 1 && options.ContainsKey("shuffle"))
                     Shuffle(names);
                 StartAnimation(names);
+            }
+            else if (IsVideo(filePath))
+            {
+                PlayVideo(filePath);
             }
             else
             {
@@ -283,6 +311,71 @@ namespace ValheimPictureFrame
             Uri uriResult;
             return Uri.TryCreate(text, UriKind.Absolute, out uriResult)
                        && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
+        }
+        
+        private VideoPlayer _video;
+        private float _volume = 1f;
+
+        private static bool IsVideo(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext == ".mp4" || ext == ".webm" || ext == ".mov";
+        }
+
+        private void StopVideo()
+        {
+            if (_video == null)
+                return;
+            _video.Stop();
+            _video.enabled = false;
+        }
+
+        private void PlayVideo(string fileName)
+        {
+            string fullPath = IsUrl(fileName)
+                ? fileName
+                : Path.Combine(_basePath, fileName);
+
+            if (!IsUrl(fileName) && !File.Exists(fullPath))
+                return;
+
+            Renderer pictureRenderer = transform.Find("Pivot/New/Picture").gameObject.GetComponent<Renderer>();
+            if (_video == null)
+            {
+                _video = pictureRenderer.gameObject.AddComponent<VideoPlayer>();
+                _video.prepareCompleted += vp => vp.Play();
+            }
+
+            var audio = _video.GetComponent<AudioSource>();
+            if (audio == null)
+                audio = _video.gameObject.AddComponent<AudioSource>();
+
+            audio.playOnAwake = false;
+            audio.loop = true;
+            audio.spatialBlend = 1f;
+            audio.rolloffMode = AudioRolloffMode.Linear;
+            audio.minDistance = 2f;
+            audio.maxDistance = 12f;
+            audio.volume = Mathf.Clamp01(_volume);
+            audio.mute = _volume <= 0f;
+
+            _video.enabled = true;
+            _video.playOnAwake = false;
+            _video.isLooping = true;
+            _video.renderMode = VideoRenderMode.MaterialOverride;
+            _video.targetMaterialRenderer = pictureRenderer;
+            _video.controlledAudioTrackCount = 1;
+            _video.audioOutputMode = VideoAudioOutputMode.AudioSource;
+            _video.SetTargetAudioSource(0, audio);
+            _video.source = VideoSource.Url;
+            _video.url = IsUrl(fileName) ? fileName : new Uri(fullPath).AbsoluteUri;
+
+            if (_video.isPrepared)
+                _video.Play();
+            else
+                _video.Prepare();
         }
     }
 }
